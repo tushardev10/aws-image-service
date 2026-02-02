@@ -2,11 +2,17 @@
 
 ## Run Docker Image
 ```sh
-docker compose up --build
+docker compose up --build -d
 ```
 This will make 2 docker containers up
 - Localstack (for AWS intrastructure)
 - Nginx (url simlification / redirection)
+
+For stopping the containers
+
+```bash
+docker-compose down -v  
+```
 
 ## Explanation
 It contains 5 Lambdas.
