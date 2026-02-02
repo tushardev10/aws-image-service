@@ -4,7 +4,7 @@ set -e
 export PATH=$PATH:/usr/bin:/usr/local/bin
 
 #AWS="aws --endpoint-url=http://localhost:4566"
-AWS="/usr/local/bin/aws --endpoint-url=http://localhost:4566"
+AWS="/usr/local/bin/aws --endpoint-url=http://localstack:4566"
 REGION="us-east-1"
 
 BUCKET="images-bucket"
@@ -77,7 +77,11 @@ create_lambda() {
     --environment "Variables={
       BUCKET=$BUCKET,
       TABLE=$TABLE,
-      LOG_LEVEL=INFO
+      LOG_LEVEL=INFO,
+      ENDPOINT_URL=http://localstack:4566,
+      AWS_ACCESS_KEY=test,
+      AWS_SECRET_KEY=test,
+      REGION=us-east-1
     }" \
     --code S3Bucket=$LAMBDA_BUCKET,S3Key=$ZIP_NAME \
     || echo "Lambda $NAME already exists"
@@ -93,11 +97,25 @@ package_and_upload_lambdas() {
 
   cd /opt/lambdas
 
-  cd upload  && zip -r ../upload.zip  handler.py && cd ..
+  echo "Packaging upload with Pillow..."
+  rm -rf upload_build
+  mkdir upload_build
+  pip install --target upload_build numpy
+  pip install --target upload_build imageio[v3]
+  cp upload/handler.py upload_build/
+  cd upload_build
+  zip -r ../upload.zip .
+  cd ..
+  rm -rf upload_build
+
+  
+  #cd upload  && zip -r ../upload.zip  handler.py && cd ..
+  cd pre-upload  && zip -r ../pre-upload.zip  handler.py && cd ..
   cd list    && zip -r ../list.zip    handler.py && cd ..
   cd view    && zip -r ../view.zip    handler.py && cd ..
   cd delete  && zip -r ../delete.zip  handler.py && cd ..
 
+  $AWS s3 cp pre-upload.zip  s3://$LAMBDA_BUCKET/
   $AWS s3 cp upload.zip  s3://$LAMBDA_BUCKET/
   $AWS s3 cp list.zip    s3://$LAMBDA_BUCKET/
   $AWS s3 cp view.zip    s3://$LAMBDA_BUCKET/
@@ -114,6 +132,7 @@ create_api_gateway() {
   API_ID=$($AWS apigateway create-rest-api \
     --name image-api \
     --query id \
+    --endpoint-configuration types=REGIONAL \
     --region $REGION \
     --output text)
 
@@ -128,16 +147,27 @@ create_api_gateway() {
   echo "API_ID=$API_ID"
   echo "ROOT_ID=$ROOT_ID"
 
+  # POST /pre-upload -> pre-upload-image
+  create_resource_and_method "$API_ID" "$ROOT_ID" "pre-upload" "POST" "pre-upload-image"
+
   create_resource_and_method "$API_ID" "$ROOT_ID" "images" "POST"  "upload-image"
   create_resource_and_method "$API_ID" "$ROOT_ID" "images" "GET"   "list-images"
 
+
+  PARENT_IMAGES_ID=$($AWS apigateway get-resources \
+    --rest-api-id $API_ID \
+    --query "items[?path=='/images'].id" \
+    --region $REGION \
+    --output text)
+
   IMAGE_ID_RES=$($AWS apigateway create-resource \
     --rest-api-id $API_ID \
-    --parent-id $ROOT_ID \
-    --region $REGION \
+    --parent-id $PARENT_IMAGES_ID \
     --path-part "{image_id}" \
+    --region $REGION \
     --query id \
     --output text)
+
 
   create_method "$API_ID" "$IMAGE_ID_RES" "GET"    "view-image"
   create_method "$API_ID" "$IMAGE_ID_RES" "DELETE" "delete-image"
@@ -148,6 +178,27 @@ create_api_gateway() {
     --stage-name dev
 
   echo "API deployed: http://localhost:4566/restapis/$API_ID/dev/_user_request_"
+
+  DOMAIN_NAME="apis.local"
+
+  echo "Creating custom domain: $DOMAIN_NAME"
+  $AWS apigateway create-domain-name \
+    --domain-name "$DOMAIN_NAME" \
+    --regional-certificate-name dummy \
+    --endpoint-configuration types=REGIONAL \
+    --region "$REGION" || true
+
+  echo "Creating base-path mapping for $DOMAIN_NAME -> $API_ID/dev"
+  $AWS apigateway create-base-path-mapping \
+    --domain-name "$DOMAIN_NAME" \
+    --rest-api-id "$API_ID" \
+    --stage dev \
+    --region "$REGION" || true
+
+  echo "Friendly URL (requires Host header or /etc/hosts entry):"
+  echo "  curl http://localhost:4566/images -H 'Host: $DOMAIN_NAME'"
+  echo "Or, after adding to /etc/hosts:"
+  echo "  curl http://$DOMAIN_NAME/images"
 }
 
 create_resource_and_method() {
@@ -202,6 +253,7 @@ create_s3_buckets
 create_dynamodb_table
 package_and_upload_lambdas
 
+create_lambda pre-upload-image pre-upload.zip handler.handler
 create_lambda upload-image upload.zip handler.handler
 create_lambda list-images   list.zip   handler.handler
 create_lambda view-image   view.zip   handler.handler
