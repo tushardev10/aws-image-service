@@ -6,3 +6,11 @@ services:
     container_name: localstack
     ports:
       - "4566:4566"
+
+  nginx:
+    build: ./nginx
+    container_name: image-api-gateway
+    depends_on:
+      - localstack
+    ports:
+      - "8080:8080"
