@@ -62,6 +62,8 @@ curl -X POST http://localhost:8080/images \
 ## List
 GET http://localhost:8080/images?user_id=123&tag=travel
 
+Sample Request and Response:
+
 ```bash
 curl -X GET "http://localhost:8080/images?user_id=user1&limit=10"
 curl -X GET "http://localhost:8080/images?user_id=user1&tag=scenic"
@@ -74,6 +76,8 @@ curl -X GET "http://localhost:8080/images?user_id=user1&tag=scenic"
 ## View
 GET http://localhost:8080/images/{image_id}
 
+Sample Request and Response:
+
 ```bash
 curl -X GET http://localhost:8080/images/2c25cec8-a28d-4a89-b1b8-ea0738f42bd7
 ```
@@ -84,6 +88,8 @@ curl -X GET http://localhost:8080/images/2c25cec8-a28d-4a89-b1b8-ea0738f42bd7
 
 ## Delete
 DELETE http://localhost:8080/images/{image_id}?user_id=123
+
+Sample Request and Response:
 
 ```bash
 curl -X DELETE http://localhost:8080/images/2c25cec8-a28d-4a89-b1b8-ea0738f42bd7
