@@ -104,3 +104,24 @@ curl -X DELETE http://localhost:8080/images/2c25cec8-a28d-4a89-b1b8-ea0738f42bd7
 ```json
 {"message": "Image deleted successfully", "image_id": "2c25cec8-a28d-4a89-b1b8-ea0738f42bd7"}
 ```
+
+
+## Test Cases:
+
+- Create virtual environment and activate it.
+```bash
+python3 -n venv venv
+source venv/bin/activate
+```
+- Install requirements.txt packages.
+```bash
+pip install -r requirements.txt
+```
+- export localstack Environment
+```bash
+source env.localstack
+```
+- Run pytests
+```bash
+pytest -v
+```
