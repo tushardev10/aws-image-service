@@ -23,7 +23,7 @@ It contains 5 Lambdas.
 5. delete (to delete the image and its record in db)
 
 ## Pre-Upload
-POST http://localhost:8080/pre-upload
+POST http://localhost:8080/
 
 Sample Request and Response:
 
@@ -44,7 +44,7 @@ curl -X POST http://localhost:8080/ \
 
 ## Upload
 Using the pre-signed url client can directly upload the image to s3 after which upload lambda gets triggered automatically with events call
-PUT http://localhost:8080/images
+PUT http://localhost:8080/
 
 Sample Request and Response:
 
