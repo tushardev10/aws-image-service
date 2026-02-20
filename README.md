@@ -2,7 +2,7 @@
 
 ## Run Docker Image
 ```sh
-docker compose up --build -d
+docker-compose up --build -d
 ```
 This will make 2 docker containers up
 - Localstack (for AWS intrastructure)
@@ -17,7 +17,7 @@ docker-compose down -v
 ## Explanation
 It contains 5 Lambdas.
 1. pre-upload (for creating pre-signed url to upload image)
-2. upload (confirm s3 upload and modify entry in table)
+2. upload (confirm s3 upload and modify entry in table, gets triggered on s3 upload event)
 3. list (to view multiple images based on user_id & tags)
 4. view (view single image along with download pre-signed link)
 5. delete (to delete the image and its record in db)
@@ -28,7 +28,7 @@ POST http://localhost:8080/pre-upload
 Sample Request and Response:
 
 ```bash
-curl -X POST http://localhost:8080/pre-upload \
+curl -X POST http://localhost:8080/ \
      -H "Content-Type: application/json" \
      -d '{
            "user_id": "user1",
@@ -43,8 +43,8 @@ curl -X POST http://localhost:8080/pre-upload \
 ```
 
 ## Upload
-Using the pre-signed url client can directly upload the image to s3 after which upload lambda needs to be triggered with POST call
-POST http://localhost:8080/images
+Using the pre-signed url client can directly upload the image to s3 after which upload lambda gets triggered automatically with events call
+PUT http://localhost:8080/images
 
 Sample Request and Response:
 
@@ -53,12 +53,6 @@ curl -X PUT \
   -H "Content-Type: image/jpeg" \
   --upload-file ./u1.jpg \
   "http://localhost:8080/images-bucket/user1/2c25cec8-a28d-4a89-b1b8-ea0738f42bd7.jpg?AWSAccessKeyId=test&Signature=TMEGfagWIafltxoAn54MYJZVo2o%3D&content-type=image%2Fjpeg&Expires=1770057028"
-
-curl -X POST http://localhost:8080/images \
-     -H "Content-Type: application/json" \
-     -d '{
-           "image_id": "2c25cec8-a28d-4a89-b1b8-ea0738f42bd7"
-         }'
 ```
 
 ```json
