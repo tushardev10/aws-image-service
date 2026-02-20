@@ -148,9 +148,9 @@ create_api_gateway() {
   echo "ROOT_ID=$ROOT_ID"
 
   # POST /pre-upload -> pre-upload-image
-  create_resource_and_method "$API_ID" "$ROOT_ID" "pre-upload" "POST" "pre-upload-image"
-
-  create_resource_and_method "$API_ID" "$ROOT_ID" "images" "POST"  "upload-image"
+  # create_resource_and_method "$API_ID" "$ROOT_ID" "pre-upload" "POST" "pre-upload-image"
+  create_resource_and_method "$API_ID" "$ROOT_ID" "images" "POST" "pre-upload-image"
+  # create_resource_and_method "$API_ID" "$ROOT_ID" "images" "POST"  "upload-image"
   create_resource_and_method "$API_ID" "$ROOT_ID" "images" "GET"   "list-images"
 
 
@@ -246,6 +246,27 @@ create_method() {
     --uri arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:000000000000:function:$LAMBDA/invocations
 }
 
+create_event_trigger_s3(){
+  $AWS s3api put-bucket-notification-configuration \
+    --bucket $BUCKET \
+    --notification-configuration '{
+        "LambdaFunctionConfigurations": [
+            {
+                "LambdaFunctionArn": "arn:aws:lambda:us-east-1:000000000000:function:upload-image",
+                "Events": ["s3:ObjectCreated:*"]
+            }
+        ]
+    }'
+
+  $AWS lambda add-permission \
+    --function-name upload-image \
+    --principal s3.amazonaws.com \
+    --statement-id s3invoke \
+    --action "lambda:InvokeFunction" \
+    --source-arn arn:aws:s3:::$BUCKET
+
+}
+
 # -----------------------------
 # EXECUTION
 # -----------------------------
@@ -258,6 +279,8 @@ create_lambda upload-image upload.zip handler.handler
 create_lambda list-images   list.zip   handler.handler
 create_lambda view-image   view.zip   handler.handler
 create_lambda delete-image delete.zip handler.handler
+
+create_event_trigger_s3
 
 create_api_gateway
 
