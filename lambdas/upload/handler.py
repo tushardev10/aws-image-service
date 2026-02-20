@@ -68,103 +68,87 @@ def generate_thumbnail(image_bytes):
 def handler(event, context):
     image_id = None
 
-    try:
-        # ---------- Parse request ----------
+    # ---------- Getting image from S3 ----------
+    table = ddb.Table(TABLE)
 
-        body = event.get("body")
-        if not body:
-            return {"statusCode": 400, "body": "Missing request body"}
+    for record in event.get("Records", []):
+        try:
+            bucket_name = record["s3"]["bucket"]["name"]
+            s3_key = unquote_plus(record["s3"]["object"]["key"])
+            image_id = os.path.splitext(os.path.basename(s3_key))[0]
 
-        data = json.loads(body)
-        image_id = data.get("image_id")
+            logger.info(f"Processing S3 object: s3://{bucket_name}/{s3_key}")
+            obj = s3.get_object(Bucket=BUCKET, Key=s3_key)
+            content_type = obj.get("ContentType", "")
+            logger.info(f"Content type recieved")
 
-        if not image_id:
-            return {"statusCode": 400, "body": "image_id is required"}
+            if not content_type.startswith("image/"):
+                raise ValueError(f"Invalid content type: {content_type}")
 
-        # ---------- Fetch DB record ----------
+            image_bytes = obj["Body"].read()
+            
 
-        table = ddb.Table(TABLE)
-        resp = table.get_item(Key={"image_id": image_id})
+            if not image_bytes:
+                raise ValueError("Uploaded file is empty")
 
-        if "Item" not in resp:
-            return {"statusCode": 404, "body": "Image not found"}
+            # ---------- Generate thumbnail ----------
 
-        item = resp["Item"]
-        s3_key = item["s3_key"]
-        logger.info(f"DB fetch complete")
+            thumbnail_b64 = generate_thumbnail(image_bytes)
 
-        # ---------- Download image from S3 ----------
+            # ---------- Update DB ----------
 
-        obj = s3.get_object(Bucket=BUCKET, Key=s3_key)
-        content_type = obj.get("ContentType", "")
-        logger.info(f"Content type recieved")
+            table.update_item(
+                Key={"image_id": image_id},
+                UpdateExpression="""
+                    SET #s = :s,
+                        thumbnail = :t,
+                        updated_at = :u
+                    REMOVE expires_at
+                """,
+                ExpressionAttributeNames={
+                    "#s": "status"
+                },
+                ExpressionAttributeValues={
+                    ":s": "READY",
+                    ":t": thumbnail_b64,
+                    ":u": int(datetime.utcnow().timestamp())
+                }
+            )
 
-        if not content_type.startswith("image/"):
-            raise ValueError(f"Invalid content type: {content_type}")
+            logger.info(f"Upload completed for image_id={image_id}")
 
-        image_bytes = obj["Body"].read()
+        except Exception as e:
+            logger.error("Upload completion failed")
+            logger.error(str(e))
+            logger.error(traceback.format_exc())
 
-        if not image_bytes:
-            raise ValueError("Uploaded file is empty")
+            if image_id:
+                try:
+                    table.update_item(
+                        Key={"image_id": image_id},
+                        UpdateExpression="""
+                            SET #s = :s,
+                                error = :e,
+                                expires_at = :ttl
+                        """,
+                        ExpressionAttributeNames={
+                            "#s": "status"
+                        },
+                        ExpressionAttributeValues={
+                            ":s": "FAILED",
+                            ":e": str(e),
+                            ":ttl": int(datetime.utcnow().timestamp()) + 3600
+                        }
+                    )
+                except Exception:
+                    logger.error("Failed to update FAILED status")
 
-        # ---------- Generate thumbnail ----------
-        
-        thumbnail_b64 = generate_thumbnail(image_bytes)
-
-        # ---------- Update DB ----------
-
-        table.update_item(
-            Key={"image_id": image_id},
-            UpdateExpression="""
-                SET #s = :s,
-                    thumbnail = :t,
-                    updated_at = :u
-                REMOVE expires_at
-            """,
-            ExpressionAttributeNames={
-                "#s": "status"
-            },
-            ExpressionAttributeValues={
-                ":s": "READY",
-                ":t": thumbnail_b64,
-                ":u": int(datetime.utcnow().timestamp())
+            return {
+                "statusCode": 500,
+                "body": json.dumps({"message": "Internal server error"})
             }
-        )
 
-        logger.info(f"Upload completed for image_id={image_id}")
-
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"message": "Upload completed"})
-        }
-
-    except Exception as e:
-        logger.error("Upload completion failed")
-        logger.error(str(e))
-        logger.error(traceback.format_exc())
-
-        if image_id:
-            try:
-                table.update_item(
-                    Key={"image_id": image_id},
-                    UpdateExpression="""
-                        SET #s = :s,
-                            error = :e,
-                            expires_at = :ttl
-                    """,
-                    ExpressionAttributeNames={
-                        "#s": "status"
-                    },
-                    ExpressionAttributeValues={
-                        ":s": "FAILED",
-                        ":e": str(e),
-                        ":ttl": int(datetime.utcnow().timestamp()) + 3600
-                    }
-                )
-            except Exception:
-                logger.error("Failed to update FAILED status")
-
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"message": "Internal server error"})
-        }
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"message": "Upload completed"})
+    }
