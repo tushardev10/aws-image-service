@@ -7,21 +7,6 @@ server {
 
   # Allow large uploads (presigned PUTs)
   client_max_body_size 50m;
-  
-
-  location = /pre-upload {
-        proxy_pass http://localstack_api/restapis/${API_ID}/dev/_user_request_/pre-upload;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-    }
-
-    location /pre-upload/ {
-        proxy_pass http://localstack_api/restapis/${API_ID}/dev/_user_request_/pre-upload/;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-    }
 
   location = /images {
     proxy_pass http://localstack_api/restapis/${API_ID}/dev/_user_request_/images;
